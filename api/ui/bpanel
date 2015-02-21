@@ -1,0 +1,127 @@
+os.loadAPI("api/ui/button")
+local BPanel = {}
+BPanel.__index = BPanel
+
+setmetatable(BPanel, {
+  __call = function(cls, ...)
+    return cls.new(...)
+  end
+})
+
+function writeCenter(text)
+  local mX, mY = term.getSize()
+  local length = mX
+  local space = string.rep(" ", (length - string.len(text)) / 2)
+
+  term.write(space)
+  term.write(text)
+  term.write(space)
+
+  if string.len(space) * 2 + string.len(text) < length then
+    term.write(" ")
+  end
+end
+
+function BPanel:display()
+  -- header
+  term.setBackgroundColor(colors.lightGray)
+  term.setTextColor(colors.white)
+  term.clear()
+  term.setBackgroundColor(colors.blue)
+  term.setTextColor(colors.white)
+  term.setCursorPos(1, 1)
+  writeCenter("Armory Interface")
+  local mX, mY = term.getSize()
+  term.setCursorPos(1,2)
+  term.write(string.rep("=", mX))
+
+  self:updateContents()
+end
+
+function BPanel:updateContents()
+  -- reset all buttons
+  for i, v in ipairs(self.buttons) do
+    v:hide()
+    v:disable()
+  end
+
+  -- now initialize them
+  for i, v in ipairs(self.choices) do
+    if (i > (self.page * self.choicesPerPage) and i <= ((self.page + 1) * self.choicesPerPage) ) then
+      local btn = self.buttons[((i-1 ) % self.choicesPerPage) + 1]
+      btn.choice = v
+      btn.text = v.text
+      btn:show()
+      if not v.isSelected then
+        btn:enable()
+      else
+        btn:disable()
+      end
+    end
+  end
+
+  -- update prev and next
+  if self.page == 0 then
+    self.prevButton:hide()
+    self.prevButton:disable()
+  else
+    self.prevButton:enable()
+    self.prevButton:show()
+  end
+  if table.maxn(self.choices) > ((self.page + 1) * table.maxn(self.buttons)) then
+    self.nextButton:enable()
+    self.nextButton:show()
+  else
+    self.nextButton:hide()
+    self.nextButton:disable()
+  end
+end
+
+function BPanel:handleClicks()
+  button.awaitClick();
+end
+
+function BPanel:setup()
+  local mX, mY = term.getSize()
+  -- this is the click handler
+  local fn = function(btn)
+    btn:flash()
+    self.callback(btn.choice)
+    self:updateContents()
+  end
+
+  self.buttons = {}
+
+  --print the buttons
+  local cY = 4
+  while cY < mY - 3 do
+    local btn = button.new("placeholder", fn, 2, mX-1, cY, cY +2, {background = colors.lightGray})
+    cY = cY + 4
+    table.insert(self.buttons, btn);
+  end
+
+  local nextHandler = function(button) button:flash(); self.page = self.page + 1; self:updateContents() end
+  local prevHandler = function(button) button:flash(); self.page = self.page - 1; self:updateContents() end
+
+  self.prevButton = button.new("previous", prevHandler , 1, 10, mY, mY, {enabled = colors.blue, background = colors.lightGray})
+  self.nextButton = button.new("next", nextHandler, mX - 9, mX+1, mY, mY, {enabled = colors.blue, background = colors.lightGray})
+end
+
+function BPanel.new(header, callback, choices)
+  local self = setmetatable({}, BPanel)
+
+  self.header = header
+  self.callback = callback
+
+  self.choices = choices
+  self.page = 0
+
+  self:setup()
+  self.choicesPerPage = table.maxn(self.buttons)
+
+  self:display()
+
+  return self
+end
+
+new = BPanel.new

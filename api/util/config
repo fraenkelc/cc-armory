@@ -1,0 +1,50 @@
+local Config = {}
+Config.__index = Config
+
+setmetatable(Config, {
+  __call = function(cls, ...)
+    return cls.new(...)
+  end
+})
+
+function Config:load()
+
+  local configuration = {}
+  if fs.exists(self.file) then
+    local h = fs.open(self.file, "r")
+    configuration = textutils.unserialize(h.readAll())
+    h.close()
+    if not configuration then
+      error("failed to load config from " .. self.file ..". Please check the syntax.")
+    end
+  end
+
+  -- fill missing defaults
+  local changed = false
+  for k, v in pairs(self.defaults) do
+    if not configuration[k] then
+      configuration[k] = v
+      changed = true
+    end
+  end
+
+  if changed then self:store() end
+
+  return configuration
+end
+
+function Config:store(configuration)
+  local h = fs.open(self.file, "w")
+  h.write(textutils.serialize(configuration))
+  h.close()
+end
+
+function Config.new(file, defaults, mandatory)
+  return setmetatable({
+    file      = file,
+    defaults  = defaults  or {},
+    mandatory = mandatory or {}
+  }, Config)
+end
+
+new = Config.new

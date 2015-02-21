@@ -1,0 +1,150 @@
+os.loadAPI("api/ipc/TSFile")
+
+local FolderIPC = {}
+FolderIPC.__index = FolderIPC
+
+setmetatable(FolderIPC, {
+  __call = function(cls, ...)
+    return cls.new(...)
+  end
+})
+
+function FolderIPC.new(folder, timeout)
+  return setmetatable({
+    folder = folder,
+    timeout = timeout or 1,
+    broadcastTimeout = 5,
+    tasks = {},
+  }, FolderIPC)
+end
+
+new = FolderIPC.new
+
+function FolderIPC:sendMessage(rcpt, message)
+  self:runTasks()
+  local file = TSFile.new(self.folder .. "/" .. tostring(rcpt))
+
+  if file:lock(self.timeout) then
+    local suc, err = pcall (function()
+      local id = 0
+      local idFile = file.filename .. "/lastid"
+      if not fs.exists(file.filename) then fs.makeDir(file.filename) end
+
+      if fs.exists(idFile) then
+        local h = fs.open(idFile, "r")
+        id = h.readAll()
+      end
+
+      id = id + 1
+      local h = fs.open(idFile, "w")
+      h.write(id)
+      h.close()
+
+      h = fs.open(file.filename .. "/msg_" .. id, "w")
+      h.write(message)
+      h.close()
+      return id
+    end
+    )
+    file:unlock();
+    if not suc then error(err) end
+    return suc
+  else
+    return false, "unable to lock " .. file.filename
+  end
+end
+
+function FolderIPC:waitForTasks()
+  while true do
+    self:runTasks()
+    if table.getn(self.tasks) == 0 then
+      return
+    end
+    os.sleep(0.05)
+  end
+end
+
+function FolderIPC:sendBroadcast(message)
+  -- send the message to the broadcast channel
+  local suc, msg = self:sendMessage("all", message)
+  if not suc then return suc, msg end
+
+  -- now schedule a cleanup job that removes everything older (including) the message we just created
+  local cleanupTime=os.clock() + self.broadcastTimeout
+
+  table.insert(self.tasks, coroutine.create(function()
+    while os.clock() < cleanupTime do
+      coroutine.yield()
+    end
+    self:removeMessages("all", msg) end))
+end
+
+function FolderIPC:runTasks()
+  local newTasks = {}
+  for i, v in ipairs(self.tasks) do
+    if coroutine.status(v) ~= 'dead' then
+      coroutine.resume(v)
+      if coroutine.status(v) ~= 'dead' then
+        table.insert(newTasks, v)
+      end
+    end
+  end
+  self.tasks = newTasks
+end
+
+function FolderIPC:removeMessages(rcpt, upto)
+
+  -- iterate over all messages
+  local file = TSFile.new(self.folder .. "/" .. tostring(rcpt))
+
+  if file:lock(self.timeout) then
+    local suc, err = pcall (function()
+      local messageFiles = fs.find(file.filename .. "/msg*")
+      for i, v in ipairs(messageFiles) do
+        if upto >= tonumber(string.match(v, "msg_(%d+)")) then
+          fs.delete(v)
+        end
+      end
+    end
+    )
+    file:unlock();
+    if not suc then error(err) end
+    return suc
+  else
+    return false, "unable to lock " .. file.filename
+  end
+
+end
+
+function FolderIPC:readMessages(rcpt, callback, doDelete)
+  self:runTasks()
+  -- sanitize input
+  rcpt = rcpt or os.getComputerID()
+  if doDelete == nil then doDelete = true else doDelete = false end
+
+  -- iterate over all messages
+  local file = TSFile.new(self.folder .. "/" .. tostring(rcpt))
+
+  if file:lock(self.timeout) then
+    local suc, err = pcall (function()
+      local messageFiles = fs.find(file.filename .. "/msg*")
+      for i, v in ipairs(messageFiles) do
+        local h = fs.open(v, "r")
+        local message = h.readAll();
+        h.close();
+        local handled = callback(message);
+        if handled and doDelete then fs.delete(v) end
+      end
+    end
+    )
+    file:unlock();
+    if not suc then error(err) end
+    return suc
+  else
+    return false, "unable to lock " .. file.filename
+  end
+end
+
+function FolderIPC:peekMessages(rcpt, callback)
+  return self:readMessages(rcpt, callback, false)
+end

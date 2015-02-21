@@ -1,0 +1,66 @@
+-- Thread safe file access
+-- locks by creating lock file
+-- atomicity is achived using fs.move which errors if the file exists
+
+local TSFile = {}
+TSFile.__index = TSFile
+
+setmetatable(TSFile, {
+  __call = function(cls, ...)
+    return cls.new(...)
+  end
+})
+
+function TSFile.new(filename)
+  if not fs.exists("/tmp") then fs.makeDir("/tmp") end
+  return setmetatable({
+    filename = filename,
+    lockfile = filename .. ".lock"
+  }, TSFile)
+end
+
+new = TSFile.new
+
+function TSFile:lock(timeout)
+  local stopTime = os.clock() + timeout
+  local lockTemp = "/tmp/" .. os.getComputerID() .. ".lock"
+  repeat
+    -- create the temp file
+    local h = fs.open(lockTemp, "w")
+    h.write(tostring(os.getComputerID()))
+    h.close()
+
+    -- move it into place
+    local locked = pcall(function() fs.move(lockTemp, self.lockfile) end)
+    if locked then return true end
+
+    -- failed, retry in a bit
+    os.sleep(0.05)
+  until stopTime < os.clock()
+
+  if fs.exists(lockTemp) then fs.delete(lockTemp) end
+  return false
+end
+
+function TSFile:unlock()
+  if self:haveLock() then
+    fs.delete(self.lockfile)
+  end
+end
+
+function TSFile:haveLock()
+  if fs.exists(self.lockfile) then
+    local locked, ret  = pcall(
+      function ()
+        local h = fs.open(self.lockfile, "r")
+        local compId = h.readAll()
+        h.close()
+        return tostring(os.getComputerID()) == compId
+      end
+    )
+    return locked and ret
+  end
+  return false
+end
+
+
