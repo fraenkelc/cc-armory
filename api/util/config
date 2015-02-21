@@ -28,7 +28,7 @@ function Config:load()
     end
   end
 
-  if changed then self:store() end
+  if changed then self:store(configuration) end
 
   return configuration
 end

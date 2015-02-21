@@ -61,23 +61,21 @@ end
 function Armory.new(cfgFile)
   local self = setmetatable({}, Armory)
   self.config = config.new("armory.config", {
-    {
-      modemSide = "top",
-      hostName = "armory",
-      extractionTime = 1,
-      player = {
-        side="back",
-        color="red"
+    modemSide = "top",
+    hostName = "armory",
+    extractionTime = 1,
+    player = {
+      side="back",
+      color="red"
+    },
+    armor = {
+      {
+        name="Diamond Armor",
+        side="right",
+        color="orange",
       },
-      armor = {
-        {
-          name="Diamond Armor",
-          side="right",
-          color="orange",
-        },
-      }
     }
-  }).load()
+  }):load()
   self:buildChoices()
   rednet.open(self.config.modemSide)
   rednet.host( "armory", self.config.hostName)

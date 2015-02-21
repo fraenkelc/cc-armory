@@ -3,7 +3,7 @@ os.loadAPI("api/util/config")
 
 local cfg = config.new("armoryClient.config", {
   modemSide = "back"
-}).load()
+}):load()
 
 local choices = {}
 rednet.open(cfg.modemSide)

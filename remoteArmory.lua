@@ -16,7 +16,7 @@ function RemoteArmory.new()
     modemSide = "top",
     hostName = "zz_proxy-armory_" .. os.getComputerID(),
     armoryId = 5,
-  }).load()
+  }):load()
 
   rednet.open(self.config.modemSide)
   rednet.host( "armory", self.config.hostName)
